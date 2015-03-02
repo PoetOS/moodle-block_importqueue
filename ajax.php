@@ -28,24 +28,23 @@ define('AJAX_SCRIPT', true);
 require('../../config.php');
 
 $query = required_param('usrset', PARAM_RAW);
-$query = preg_replace('/[^A-Za-z0-9_-\s]/i', '', $query);
+$query = preg_replace('/[^\da-z ]/i', '', $query);
 $query = trim($query);
 $callback = optional_param('callback', '', PARAM_TEXT);
 
 $PAGE->set_url(new moodle_url('/blocks/importqueue/ajax.php', array('usrset' => $query)));
-
 require_login(null, false);
 $context = context_system::instance();
+$like = $DB->sql_like('name', '?', false);
 if (is_siteadmin() || has_capability('block/importqueue:sitewide', $context, $USER->id)) {
     // For system adminstrator or role with sitewide access select from all usersets.
-    $like = $DB->sql_like('name', '?', false);
     $sql = "SELECT *
               FROM {local_elisprogram_uset}
              WHERE depth in (2, 3)
                    AND {$like}
           ORDER BY name ASC
              LIMIT 50";
-    $param = array('%'.$query.'%');
+    $param = array('%'.$DB->sql_like_escape($query).'%');
     $records = $DB->get_recordset_sql($sql, $param);
 } else if (has_capability('block/importqueue:upload', $context, $USER->id)) {
     // Get solution id for user.
@@ -61,7 +60,6 @@ if (is_siteadmin() || has_capability('block/importqueue:sitewide', $context, $US
                    AND fldchar.data = ?";
     $usersetcontextandname = $DB->get_record_sql($sql, array($solutionidfield, $solutionid));
     // Show roles and solution id userset.
-    $like = $DB->sql_like('name', '?', false);
     $sql = "SELECT *
               FROM {local_elisprogram_uset}
              WHERE depth in (2, 3)
@@ -72,7 +70,7 @@ if (is_siteadmin() || has_capability('block/importqueue:sitewide', $context, $US
     if (empty($usersetcontextandname->id)) {
         print_error('nopermissiontoshow');
     }
-    $param = array($usersetcontextandname->id, $usersetcontextandname->id, '%'.$query.'%');
+    $param = array($usersetcontextandname->id, $usersetcontextandname->id, '%'.$DB->sql_like_escape($query).'%');
     $records = $DB->get_recordset_sql($sql, $param);
 } else {
     print_error('nopermissiontoshow');
@@ -85,6 +83,15 @@ foreach ($records as $record) {
         $parent = $DB->get_record('local_elisprogram_uset', array('id' => $record->parent));
         $record->name = $parent->name.'-'.$record->name;
     }
+    $formattedresult['result'][] = $record;
+}
+
+if (count($formattedresult['result']) < 1) {
+    // Show no results found for.
+    $record = new stdClass();
+    $record->name = get_string('noresults', 'block_importqueue', $query);
+    $record->display = get_string('noresults', 'block_importqueue', $query);
+    $record->id = 0;
     $formattedresult['result'][] = $record;
 }
 

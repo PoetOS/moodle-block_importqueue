@@ -76,3 +76,4 @@ $string['importusersviewqueue'] = 'List imports';
 $string['refreshstatus'] = 'Refresh status';
 $string['usersetnotfound'] = 'Userset not found for solution id: {$a->solutionid}';
 $string['solutionidnotset'] = 'Solution id not set';
+$string['noresults'] = 'No results found for {$a}';
