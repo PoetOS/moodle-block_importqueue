@@ -242,7 +242,7 @@ class importqueue_form extends moodleform {
             fwrite($fp, $content);
             fseek($fp, 0);
 
-            $columns = array('username', 'password', 'firstname', 'lastname', 'email', 'city', 'country');
+            $columns = array('email', 'password', 'firstname', 'lastname', 'city', 'country');
             $firstrow = fgetcsv($fp);
             $total = count($columns);
             $tempdestfile = tempnam($tempdir, 'dest');
@@ -261,7 +261,7 @@ class importqueue_form extends moodleform {
                     return 0;
                 }
             }
-            array_unshift($firstrow, 'action', 'auth', 'idnumber', $solutionfield);
+            array_unshift($firstrow, 'username', 'action', 'auth', 'idnumber', $solutionfield);
             fputcsv($fpdest, $firstrow);
 
             // Save users to create enrol file if role is selected.
@@ -287,7 +287,7 @@ class importqueue_form extends moodleform {
                 $count++;
                 // Add datahub fields.
                 $users[] = $row[0];
-                array_unshift($row, 'create', 'kronosportal', $row[0], $usersolutionid);
+                array_unshift($row, $row[0], 'create', 'kronosportal', $row[0], $usersolutionid);
                 fputcsv($fpdest, $row);
             }
             fclose($fpdest);
