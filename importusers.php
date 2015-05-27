@@ -36,23 +36,27 @@ $PAGE->set_title(get_string('importuserstitle', 'block_importqueue'));
 
 $importqueueform = new importqueue_form($context);
 
-$queueid = $importqueueform->process();
 echo $OUTPUT->header();
 
 echo html_writer::tag('h3', get_string('importusersheading', 'block_importqueue'));
+
+if ($importqueueform->is_submitted() && $importqueueform->is_validated()) {
+    $queueid = $importqueueform->process();
+    if (empty($queueid)) {
+        echo $importqueueform->geterror();
+    } else {
+        echo html_writer::tag('h3', get_string('importusersuccess', 'block_importqueue'));
+        echo $importqueueform->geterror();
+    }
+} else {
+    $importqueueform->display();
+}
 
 if ($count = $DB->count_records('dhimport_importqueue', array('userid' => $USER->id))) {
     echo html_writer::tag('p', get_string('importusersqueue', 'block_importqueue', $count));
     $link = new moodle_url('/blocks/importqueue/queuestatus.php');
     $options = array("onclick" => 'window.location=\''.$link->out()."'");
     echo html_writer::tag('button', get_string('importusersviewqueue', 'block_importqueue'), $options);
-}
-
-if (empty($queueid)) {
-    echo $importqueueform->geterror();
-} else {
-    echo html_writer::tag('h3', get_string('importusersuccess', 'block_importqueue'));
-    echo $importqueueform->geterror();
 }
 
 echo $OUTPUT->footer();

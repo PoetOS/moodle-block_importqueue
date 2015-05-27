@@ -61,8 +61,13 @@ class importqueue_form extends moodleform {
      */
     public function validation($data, $files) {
         $errors = array();
-        if (empty($data['config_userset'])) {
-            $errors['config_userset'] = 'error';
+        if ($this->validate_draft_files() !== true) {
+            $errors['csvfile'] = get_string('errorcsvfile', 'block_importqueue');
+        }
+        if ($this->isselect()) {
+            if (empty($data['config_userset'])) {
+                $errors['config_userset'] = get_string('errorconfig_userset', 'block_importqueue');
+            }
         }
         return $errors;
     }
@@ -187,9 +192,31 @@ class importqueue_form extends moodleform {
         $items = array();
 
         foreach ($records as $item) {
-            $items[$item->id] = $item->name;
+            if (!empty($item->displayname)) {
+                $items[$item->id] = $item->displayname;
+            } else {
+                $items[$item->id] = $item->name;
+            }
         }
         $mform->addElement('select', 'config_userset', get_string('selecteduserset', 'block_importqueue'), $items);
+    }
+
+    /**
+     * Check if select or auto complete should be used.
+     * @return True if drop down or auto complete can be used.
+     */
+    public function isselect() {
+        global $USER;
+        $context = context_system::instance();
+        if (is_siteadmin() || has_capability('block/importqueue:sitewide', $context, $USER->id)) {
+            if (!empty(get_config('block_importqueue', 'learningpath_autocomplete'))) {
+                return true;
+            }
+        }
+        if (!empty(get_config('block_importqueue', 'learningpath_select'))) {
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -198,12 +225,15 @@ class importqueue_form extends moodleform {
     public function definition() {
         global $USER, $DB;
         $mform =& $this->_form;
-
         $context = context_system::instance();
         if (is_siteadmin() || has_capability('block/importqueue:sitewide', $context, $USER->id)) {
-            $this->addautocomplete();
+            if (!empty(get_config('block_importqueue', 'learningpath_autocomplete'))) {
+                $this->addautocomplete();
+            }
         } else {
-            $this->addselect();
+            if (!empty(get_config('block_importqueue', 'learningpath_select'))) {
+                $this->addselect();
+            }
         }
 
         $mform->addElement('filepicker', 'csvfile', get_string('file'), null,
@@ -225,26 +255,55 @@ class importqueue_form extends moodleform {
             $this->error = html_writer::tag('h3', get_string('configauthkronos', 'block_importqueue'), $redoptions);
             return 0;
         }
-        $formdata = $this->get_data();
-        if (empty($formdata)) {
+
+        $context = context_system::instance();
+
+        if (!$this->is_submitted() && !$this->is_validated()) {
             $this->error = $this->render();
             return 0;
         } else {
             // Process upload.
-            $content = $this->get_file_content('csvfile');
             $tempdir = make_temp_directory('/importqueue');
             $tempfile = tempnam($tempdir, 'tmp');
-            if (!$fp = fopen($tempfile, 'w+b')) {
-                $this->_error = get_string('csvcannotsavedata', 'error');
-                @unlink($tempfile);
-                return 0;
-            }
-            fwrite($fp, $content);
-            fseek($fp, 0);
+            $this->save_file('csvfile', $tempfile, true);
 
+            // Default columns that are required by datahub.
             $columns = array('email', 'password', 'firstname', 'lastname', 'city', 'country');
+
+            // Only add learning path to columns if auto complete or drop down is not configured.
+            if (is_siteadmin() || has_capability('block/importqueue:sitewide', $context, $USER->id)) {
+                if (empty(get_config('block_importqueue', 'learningpath_autocomplete'))) {
+                    $columns[] = 'learningpath';
+                }
+            } else if (empty(get_config('block_importqueue', 'learningpath_select'))) {
+                // Must be training manager with learning path drop down enabled.
+                $columns[] = 'learningpath';
+            }
+            // Add columns set in configuration.
+            $customcolumns = preg_split('/,/', get_config('block_importqueue', 'importcolumns'));
+            foreach ($customcolumns as $column) {
+                if (!empty($column)) {
+                    $columns[] = $column;
+                }
+            }
+
+            $allowedempty = array('learningpath');
+            // Add allowed empty columns set in configuration.
+            $customcolumns = preg_split('/,/', get_config('block_importqueue', 'allowedempty'));
+            foreach ($customcolumns as $column) {
+                if (!empty($column)) {
+                    $allowedempty[] = $column;
+                }
+            }
+
+            $fp = fopen($tempfile, 'r');
             $firstrow = fgetcsv($fp);
             $total = count($columns);
+            $totalfirstrow = count($firstrow);
+            if ($total != $totalfirstrow) {
+                $this->error = html_writer::tag('h3', get_string('csvinvalidcolumnformatheader', 'block_importqueue', join(',', $columns)), $redoptions);
+                return 0;
+            }
             $tempdestfile = tempnam($tempdir, 'dest');
             if (!$fpdest = fopen($tempdestfile, 'w+b')) {
                 $this->_error = get_string('csvcannotsavedata', 'error');
@@ -255,18 +314,81 @@ class importqueue_form extends moodleform {
             $usersolutionid = $auth->get_user_solution_id($USER->id);
             $solutionfield = kronosportal_get_solutionfield();
 
+            $learningpath = '';
+
+            $formdata = $this->get_data();
+
+            // Load solution id and learning path from user set if user set is selected in form.
+            if ($this->isselect() && !empty($formdata->config_userset)) {
+                $userset = $DB->get_record('local_elisprogram_uset', array('id' => $formdata->config_userset));
+                $auth = get_auth_plugin('kronosportal');
+                $result = $DB->get_record('local_eliscore_field', array('id' => $auth->config->solutionid));
+                $usersetsolutionidfield = 'field_'.$result->shortname;
+                if (!empty($userset) && $userset->depth == 2) {
+                    $uset = new Userset($userset->id);
+                    $uset->load();
+                    // Solution id user set.
+                    if (!empty($uset->$usersetsolutionidfield)) {
+                        // Only allow to over ride solution user set if admin or have site wide capability.
+                        if (is_siteadmin() || has_capability('block/importqueue:sitewide', $context, $USER->id)) {
+                            $usersolutionid = $uset->$usersetsolutionidfield;
+                        }
+                    }
+                } else if ($userset->depth == 3 && !empty($userset->parent)) {
+                    // Learning path user set.
+                    $parentuserset = new Userset($userset->parent);
+                    $parentuserset->load();
+                    $learningpath = empty($userset->displayname) ? $userset->name : $userset->displayname;
+                    if (!empty($parentuserset->$usersetsolutionidfield)) {
+                        // Only allow to over ride solution user set if admin or have site wide capability.
+                        if (is_siteadmin() || has_capability('block/importqueue:sitewide', $context, $USER->id)) {
+                            $usersolutionid = $parentuserset->$usersetsolutionidfield;
+                        }
+                    }
+                }
+            }
+
+            // Validate the solution id is valid.
+            if (!kronosportal_is_user_userset_valid($auth, $usersolutionid)) {
+                $this->error = html_writer::tag('h3', get_string('invalidsolutionid', 'block_importqueue', $usersolutionid), $redoptions);
+                return 0;
+            }
+
+            if (kronosportal_is_user_userset_expired($auth, $usersolutionid)) {
+                $this->error = html_writer::tag('h3', get_string('expiredsolutionid', 'block_importqueue'), $redoptions);
+                return 0;
+            }
+
             for ($i = 0; $i < $total; $i++) {
-                if ($firstrow[$i] != $columns[$i]) {
+                if (empty($firstrow[$i]) || $firstrow[$i] != $columns[$i]) {
                     $this->error = html_writer::tag('h3', get_string('csvinvalidcolumnformat', 'block_importqueue', $columns[$i]), $redoptions);
                     return 0;
                 }
             }
-            array_unshift($firstrow, 'username', 'action', 'auth', 'idnumber', $solutionfield);
+
+            $excludecolumns = array('action', 'auth', 'username', 'idnumber', 'context');
+            $excludetotal = count($excludecolumns);
+            for ($i = 0; $i < $excludetotal; $i++) {
+                if (in_array($excludecolumns[$i], $firstrow)) {
+                    $this->error = html_writer::tag('h3', get_string('csvinvalidcolumnformatexclude', 'block_importqueue', $excludecolumns[$i]), $redoptions);
+                    return 0;
+                }
+            }
+
+            array_unshift($firstrow, 'username', 'action', 'auth', 'idnumber', 'profile_field_'.$solutionfield);
+            // If we have a learning path add the learning path column if needed.
+            if (!in_array('learningpath', $columns) && $learningpath) {
+                $columns[] = 'learningpath';
+            }
+            if (!in_array('learningpath', $firstrow) && $learningpath) {
+                $firstrow[] = 'learningpath';
+            }
             fputcsv($fpdest, $firstrow);
 
-            // Save users to create enrol file if role is selected.
+            // Add password and learningpath to csv file.
             $users = array();
             $count = 0;
+            $total = count($columns);
             while ($row = fgetcsv($fp)) {
                 for ($i = 0; $i < $total; $i++) {
                     if ($columns[$i] == 'password') {
@@ -274,32 +396,32 @@ class importqueue_form extends moodleform {
                         if (empty($row[$i])) {
                             $row[$i] = generate_password();
                         }
+                    } else if ($columns[$i] == 'learningpath' && !empty($learningpath)) {
+                        $row[$i] = $learningpath;
                     }
-                    if (empty($row[$i])) {
+                    // If empty and not allowed to be empty report an error.
+                    if (!in_array($columns[$i], $allowedempty) && empty($row[$i])) {
                         $columnname = $columns[$i];
                         $error = new stdClass();
                         $error->linenumber = $count;
-                        $error->columname = $columnname;
-                        $this->error = html_writer::tag('h3', get_string('csvinvalidrow', 'block_importqueue', $error), $redoptions);
-                        return 0;
+                        $error->columnname = $columnname;
+                        $error->email = $row[0];
+                        $this->error .= html_writer::tag('h3', get_string('csvinvalidrow', 'block_importqueue', $error), $redoptions);
                     }
                 }
                 $count++;
                 // Add datahub fields.
-                $users[] = $row[0];
+                $users[] = array($row[0]);
                 array_unshift($row, $row[0], 'create', 'kronosportal', $row[0], $usersolutionid);
                 fputcsv($fpdest, $row);
             }
             fclose($fpdest);
-            $importqueue = new importqueue();
-            $userset = $DB->get_record('local_elisprogram_uset', array('id' => $formdata->config_userset));
-            // If assigning to a role, than create enrol file.
-            if ($userset->depth != 2) {
-                $enrolfile = $importqueue->enrol_users_userset($userset->name, $users);
-            } else {
-                $enrolfile = null;
+            // An error has occured.
+            if (!empty($this->error)) {
+                return 0;
             }
-            $queueid = $importqueue->addtoqueue($tempdestfile, null, $enrolfile);
+            $importqueue = new importqueue();
+            $queueid = $importqueue->addtoqueue($tempdestfile, null, null);
             if ($queueid) {
                 $status = new stdClass();
                 $status->total = $count;
