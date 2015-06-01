@@ -33,19 +33,26 @@ $context = context_system::instance();
 $PAGE->set_context($context);
 $PAGE->set_pagelayout('admin');
 $PAGE->set_title(get_string('importuserstitle', 'block_importqueue'));
-
-$importqueueform = new importqueue_form($context);
+$mode = optional_param('mode', 'create', PARAM_TEXT);
+$importqueueform = new importqueue_form($context, 0, $mode);
 
 echo $OUTPUT->header();
 
-echo html_writer::tag('h3', get_string('importusersheading', 'block_importqueue'));
+$prefix = 'importusers';
+if ($mode == 'update') {
+    $prefix = 'update';
+}
+$options = array('class' => 'importqueue'.$mode);
+echo html_writer::tag('h3', get_string($prefix.'heading', 'block_importqueue'), $options);
+
+echo html_writer::tag('div', get_config('block_importqueue', 'menu'));
 
 if ($importqueueform->is_submitted() && $importqueueform->is_validated()) {
-    $queueid = $importqueueform->process();
+    $queueid = $importqueueform->process($mode);
     if (empty($queueid)) {
         echo $importqueueform->geterror();
     } else {
-        echo html_writer::tag('h3', get_string('importusersuccess', 'block_importqueue'));
+        echo html_writer::tag('h3', get_string($prefix.'success', 'block_importqueue'));
         echo $importqueueform->geterror();
     }
 } else {
@@ -53,9 +60,10 @@ if ($importqueueform->is_submitted() && $importqueueform->is_validated()) {
 }
 
 if ($count = $DB->count_records('dhimport_importqueue', array('userid' => $USER->id))) {
-    echo html_writer::tag('p', get_string('importusersqueue', 'block_importqueue', $count));
+    $options = array('class' => 'uploadstatustext');
+    echo html_writer::tag('p', get_string('importusersqueue', 'block_importqueue', $count), $options);
     $link = new moodle_url('/blocks/importqueue/queuestatus.php');
-    $options = array("onclick" => 'window.location=\''.$link->out()."'");
+    $options = array("onclick" => 'window.location=\''.$link->out()."'", 'class' => 'uploadstatusbutton');
     echo html_writer::tag('button', get_string('importusersviewqueue', 'block_importqueue'), $options);
 }
 

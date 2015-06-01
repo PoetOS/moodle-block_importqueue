@@ -51,6 +51,14 @@ if ($ADMIN->fulltree) {
     $settings->add(new admin_setting_configtext('block_importqueue/allowedempty', get_string('allowedempty', 'block_importqueue'),
                        get_string('allowedemptydesc', 'block_importqueue'), ''));
 
+    $settings->add(new admin_setting_heading('block_importqueue/updatefields', get_string('updatesettingsheading', 'block_importqueue'), ''));
+
+    $settings->add(new admin_setting_configtext('block_importqueue/updatecolumns', get_string('updatecolumns', 'block_importqueue'),
+                       get_string('updatecolumnsdesc', 'block_importqueue'), ''));
+
+    $settings->add(new admin_setting_configtext('block_importqueue/updateallowedempty', get_string('updateallowedempty', 'block_importqueue'),
+                       get_string('updateallowedemptydesc', 'block_importqueue'), ''));
+
     $settings->add(new admin_setting_heading('block_importqueue/importqueuefields', get_string('csvfieldsheading', 'block_importqueue'),
                        get_string('csvfieldsdesc', 'block_importqueue', join('', $map))));
 
@@ -59,4 +67,7 @@ if ($ADMIN->fulltree) {
 
     $settings->add(new admin_setting_configcheckbox('block_importqueue/learningpath_select', get_string('learningpath_select', 'block_importqueue'),
                        get_string('learningpath_selectdesc', 'block_importqueue'), 0));
+
+    $settings->add(new admin_setting_configtextarea('block_importqueue/menu', get_string('menu', 'block_importqueue'),
+                       get_string('menudesc', 'block_importqueue'), get_string('newimportqueuecontent', 'block_importqueue', $CFG)));
 }

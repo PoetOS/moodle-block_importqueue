@@ -45,14 +45,20 @@ class importqueue_form extends moodleform {
      * @var int $error Error message.
      */
     private $error = null;
+    /**
+     * @var string $mode Form mode.
+     */
+    private $mode = 'create';
 
     /**
      * Constructor, set context id and userset for autocomplete.
      *
      * @param int $context id.
+     * @param string $mode Mode for upload, create for creating new users, update for updating users.
      */
-    public function __construct($context, $userset = 0) {
+    public function __construct($context, $userset = 0, $mode = 'create') {
         $this->context = $context;
+        $this->mode = $mode;
         parent::__construct();
     }
 
@@ -236,6 +242,10 @@ class importqueue_form extends moodleform {
             }
         }
 
+        // Add mode option.
+        $mform->addElement('hidden', 'mode', $this->mode);
+        $mform->setType('mode', PARAM_TEXT);
+
         $mform->addElement('filepicker', 'csvfile', get_string('file'), null,
                 array('maxbytes' => 1048576, 'accepted_types' => '*'));
         $mform->addRule('csvfile', get_string('uploadrequired', 'block_importqueue'), 'required', null, 'client');
@@ -267,8 +277,17 @@ class importqueue_form extends moodleform {
             $tempfile = tempnam($tempdir, 'tmp');
             $this->save_file('csvfile', $tempfile, true);
 
+            // Retrieve the mode of the upload.
+            $formdata = $this->get_data();
+            $mode = $formdata->mode;
+
             // Default columns that are required by datahub.
             $columns = array('email', 'password', 'firstname', 'lastname', 'city', 'country');
+
+            // For updating, the Id number is used as the unique identifier.
+            if ($mode == 'update') {
+                array_unshift($columns, 'idnumber');
+            }
 
             // Only add learning path to columns if auto complete or drop down is not configured.
             if (is_siteadmin() || has_capability('block/importqueue:sitewide', $context, $USER->id)) {
@@ -280,7 +299,11 @@ class importqueue_form extends moodleform {
                 $columns[] = 'learningpath';
             }
             // Add columns set in configuration.
-            $customcolumns = preg_split('/,/', get_config('block_importqueue', 'importcolumns'));
+            if ($mode == 'update') {
+                $customcolumns = preg_split('/,/', get_config('block_importqueue', 'updatecolumns'));
+            } else {
+                $customcolumns = preg_split('/,/', get_config('block_importqueue', 'importcolumns'));
+            }
             foreach ($customcolumns as $column) {
                 if (!empty($column)) {
                     $columns[] = $column;
@@ -289,7 +312,11 @@ class importqueue_form extends moodleform {
 
             $allowedempty = array('learningpath');
             // Add allowed empty columns set in configuration.
-            $customcolumns = preg_split('/,/', get_config('block_importqueue', 'allowedempty'));
+            if ($mode == 'update') {
+                $customcolumns = preg_split('/,/', get_config('block_importqueue', 'updateallowedempty'));
+            } else {
+                $customcolumns = preg_split('/,/', get_config('block_importqueue', 'allowedempty'));
+            }
             foreach ($customcolumns as $column) {
                 if (!empty($column)) {
                     $allowedempty[] = $column;
@@ -315,8 +342,6 @@ class importqueue_form extends moodleform {
             $solutionfield = kronosportal_get_solutionfield();
 
             $learningpath = '';
-
-            $formdata = $this->get_data();
 
             // Load solution id and learning path from user set if user set is selected in form.
             if ($this->isselect() && !empty($formdata->config_userset)) {
@@ -361,12 +386,19 @@ class importqueue_form extends moodleform {
 
             for ($i = 0; $i < $total; $i++) {
                 if (empty($firstrow[$i]) || $firstrow[$i] != $columns[$i]) {
-                    $this->error = html_writer::tag('h3', get_string('csvinvalidcolumnformat', 'block_importqueue', $columns[$i]), $redoptions);
+                    $a = new stdClass();
+                    $a->column = $columns[$i];
+                    $a->index = $i;
+                    $this->error = html_writer::tag('h3', get_string('csvinvalidcolumnformat', 'block_importqueue', $a), $redoptions);
                     return 0;
                 }
             }
 
-            $excludecolumns = array('action', 'auth', 'username', 'idnumber', 'context');
+            $excludecolumns = array('action', 'auth', 'username', 'context');
+            // Allow idnumber to be used during update.
+            if ($mode == 'create') {
+                $excludecolumns[] = 'idnumber';
+            }
             $excludetotal = count($excludecolumns);
             for ($i = 0; $i < $excludetotal; $i++) {
                 if (in_array($excludecolumns[$i], $firstrow)) {
@@ -375,7 +407,13 @@ class importqueue_form extends moodleform {
                 }
             }
 
-            array_unshift($firstrow, 'username', 'action', 'auth', 'idnumber', 'profile_field_'.$solutionfield);
+            // Remove idnumber column.
+            if ($mode == 'update') {
+                array_unshift($firstrow, 'username', 'action', 'auth', 'profile_field_'.$solutionfield);
+            } else if ($mode == 'create') {
+                array_unshift($firstrow, 'username', 'action', 'auth', 'idnumber', 'profile_field_'.$solutionfield);
+            }
+
             // If we have a learning path add the learning path column if needed.
             if (!in_array('learningpath', $columns) && $learningpath) {
                 $columns[] = 'learningpath';
@@ -387,9 +425,10 @@ class importqueue_form extends moodleform {
 
             // Add password and learningpath to csv file.
             $users = array();
-            $count = 0;
+            $count = 1;
             $total = count($columns);
             while ($row = fgetcsv($fp)) {
+                $count++;
                 for ($i = 0; $i < $total; $i++) {
                     if ($columns[$i] == 'password') {
                         // If password is empty generate one.
@@ -398,6 +437,8 @@ class importqueue_form extends moodleform {
                         }
                     } else if ($columns[$i] == 'learningpath' && !empty($learningpath)) {
                         $row[$i] = $learningpath;
+                    } else if ($columns[$i] == 'idnumber') {
+                        $idnumber = $row[$i];
                     }
                     // If empty and not allowed to be empty report an error.
                     if (!in_array($columns[$i], $allowedempty) && empty($row[$i])) {
@@ -409,10 +450,14 @@ class importqueue_form extends moodleform {
                         $this->error .= html_writer::tag('h3', get_string('csvinvalidrow', 'block_importqueue', $error), $redoptions);
                     }
                 }
-                $count++;
                 // Add datahub fields.
                 $users[] = array($row[0]);
-                array_unshift($row, $row[0], 'create', 'kronosportal', $row[0], $usersolutionid);
+                if ($mode == 'create') {
+                    array_unshift($row, $row[0], 'create', 'kronosportal', $row[0], $usersolutionid);
+                } else if ($mode == 'update') {
+                    // Id number is first column and second column is the email address which is used as username.
+                    array_unshift($row, $row[1], 'update', 'kronosportal', $usersolutionid);
+                }
                 fputcsv($fpdest, $row);
             }
             fclose($fpdest);
