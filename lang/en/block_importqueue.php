@@ -115,3 +115,4 @@ $string['deletesolutioniddesc'] = 'Users who are deleted will have their solutio
 $string['deletesettingsheading'] = 'Delete settings';
 $string['deleteconfirmed'] = '{$a->total} users added to queue for deletion';
 $string['deleteerror'] = 'File already processed';
+$string['createsettingsheading'] = 'Create settings';

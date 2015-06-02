@@ -39,7 +39,7 @@ if (empty($SESSION->block_importqueue_csvfile) || !file_exists($SESSION->block_i
 }
 
 if ($confirm) {
-    $count = count(file($SESSION->block_importqueue_csvfile))-1;
+    $count = count(file($SESSION->block_importqueue_csvfile)) - 1;
     $importqueue = new importqueue();
     $queueid = $importqueue->addtoqueue($SESSION->block_importqueue_csvfile, null, null);
     @unlink($SESSION->block_importqueue_csvfile);
