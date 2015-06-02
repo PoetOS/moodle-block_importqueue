@@ -59,6 +59,11 @@ if ($ADMIN->fulltree) {
     $settings->add(new admin_setting_configtext('block_importqueue/updateallowedempty', get_string('updateallowedempty', 'block_importqueue'),
                        get_string('updateallowedemptydesc', 'block_importqueue'), ''));
 
+    $settings->add(new admin_setting_heading('block_importqueue/deletefields', get_string('deletesettingsheading', 'block_importqueue'), ''));
+
+    $settings->add(new admin_setting_configtext('block_importqueue/deletesolutionid', get_string('deletesolutionid', 'block_importqueue'),
+                       get_string('deletesolutioniddesc', 'block_importqueue'), 'deleted'));
+
     $settings->add(new admin_setting_heading('block_importqueue/importqueuefields', get_string('csvfieldsheading', 'block_importqueue'),
                        get_string('csvfieldsdesc', 'block_importqueue', join('', $map))));
 
