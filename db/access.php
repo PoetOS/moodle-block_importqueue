@@ -52,5 +52,14 @@ $capabilities = array(
         'archetypes' => array(
             'manager' => CAP_ALLOW
         ),
-    )
+    ),
+    'block/importqueue:myaddinstance' => array(
+        'riskbitmask'  => RISK_PERSONAL,
+        'captype'      => 'read',
+        'contextlevel' => CONTEXT_SYSTEM,
+        'archetypes'   => array(
+            'user' => CAP_ALLOW,
+        ),
+        'clonepermissionsfrom' => 'moodle/my:manageblocks'
+    ),
 );

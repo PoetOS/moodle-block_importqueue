@@ -27,11 +27,11 @@ if (!defined('MOODLE_INTERNAL')) {
     die('Direct access to this script is forbidden.');
 }
 
-$plugin->version = 2015020501;
+$plugin->version = 2018110100;
 $plugin->component = 'block_importqueue';
-$plugin->release = 'Import queue block';
+$plugin->release = 'Import queue block - 3.5.0 Beta';
 $plugin->requires = 2014051201.00;
-$plugin->maturity = MATURITY_STABLE;
+$plugin->maturity = MATURITY_BETA;
 $plugin->dependencies = array(
     'local_datahub' => 2014082502,
     'auth_kronosportal' => 2015012800
